@@ -1,8 +1,16 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"strings"
+)
+
+var (
+	rri = map[string]int{}
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -18,5 +26,88 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte(strings.Join(targets, "\n")))
+	index := 0
+	if rr, ok := rri[backend]; ok {
+		index = rr
+		if rr > len(targets)-1 {
+			rr = 0
+		}
+	} else {
+		rri[backend] = 0
+		index = 0
+	}
+
+	r.RequestURI = ""
+	r.URL.Scheme = "http"
+
+	remote_addr := r.RemoteAddr
+	idx := strings.LastIndex(remote_addr, ":")
+	if idx != -1 {
+		remote_addr = remote_addr[0:idx]
+		if remote_addr[0] == '[' && remote_addr[len(remote_addr)-1] == ']' {
+			remote_addr = remote_addr[1 : len(remote_addr)-1]
+		}
+	}
+	r.Header.Add("X-Forwarded-For", remote_addr)
+
+	r.URL.Host = targets[index]
+
+	conn_hdr := ""
+	conn_hdrs := r.Header["Connection"]
+	if len(conn_hdrs) > 0 {
+		conn_hdr = conn_hdrs[0]
+	}
+
+	upgrade_websocket := false
+	if strings.ToLower(conn_hdr) == "upgrade" {
+		upgrade_hdrs := r.Header["Upgrade"]
+		if len(upgrade_hdrs) > 0 {
+			upgrade_websocket = (strings.ToLower(upgrade_hdrs[0]) == "websocket")
+		}
+	}
+
+	if upgrade_websocket {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "webserver doesn't support hijacking", http.StatusInternalServerError)
+			return
+		}
+
+		conn, bufrw, err := hj.Hijack()
+		defer conn.Close()
+
+		conn2, err := net.Dial("tcp", targets[index])
+		if err != nil {
+			http.Error(w, "couldn't connect to backend server", http.StatusServiceUnavailable)
+			return
+		}
+		defer conn2.Close()
+
+		err = r.Write(conn2)
+		if err != nil {
+			return
+		}
+
+		CopyBidir(conn, bufrw, conn2, bufio.NewReadWriter(bufio.NewReader(conn2), bufio.NewWriter(conn2)))
+	} else {
+		transport := &http.Transport{DisableKeepAlives: false, DisableCompression: false}
+
+		resp, err := transport.RoundTrip(r)
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, "Error: %v", err)
+			return
+		}
+
+		for k, v := range resp.Header {
+			for _, vv := range v {
+				w.Header().Add(k, vv)
+			}
+		}
+
+		w.WriteHeader(resp.StatusCode)
+
+		io.Copy(w, resp.Body)
+		resp.Body.Close()
+	}
 }

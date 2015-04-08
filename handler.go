@@ -50,9 +50,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			httpsifyLock.RLock()
+
+			httpsifyLock.Lock()
 			httpsify[r.Host] = false
-			httpsifyLock.RUnlock()
+			httpsifyLock.Unlock()
 		}
 	}
 

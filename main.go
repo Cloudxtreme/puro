@@ -17,6 +17,7 @@ var (
 	logForceColors   = flag.Bool("log_force_colors", false, "Force colored log output?") // Logrus force colors
 	etcdAddress      = flag.String("etcd_address", "", "Address of the etcd server to use")
 	etcdPath         = flag.String("etcd_path", "", "Prefix of the etcd directory, no slash near the end")
+	sessionCacheSize = flag.Int("session_cache_size", 64, "Size of the LRU client session cache")
 
 	rawBind = flag.String("raw_bind", "0.0.0.0:80", "Address used for the HTTP server")
 	tlsBind = flag.String("tls_bind", "0.0.0.0:443", "Address used for the HTTPS server")
@@ -70,6 +71,7 @@ func main() {
 			tls.TLS_RSA_WITH_AES_128_CBC_SHA,
 		},
 		PreferServerCipherSuites: true,
+		ClientSessionCache:       tls.NewLRUClientSessionCache(*sessionCacheSize),
 	}
 	tlsConfig.BuildNameToCertificate()
 

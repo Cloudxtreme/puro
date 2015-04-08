@@ -14,6 +14,48 @@ var (
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	// First ensure HTTPS if we have a proper cert
+	if tlsConfig.NameToCertificate != nil {
+		httpsifyLock.RLock()
+		st, ok := httpsify[r.Host]
+		httpsifyLock.RUnlock()
+		if ok {
+			if st {
+				http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusMovedPermanently)
+				return
+			}
+		} else {
+			name := strings.ToLower(r.Host)
+			for len(name) > 0 && name[len(name)-1] == '.' {
+				name = name[:len(name)-1]
+			}
+
+			if _, ok := tlsConfig.NameToCertificate[name]; ok {
+				httpsifyLock.Lock()
+				httpsify[r.Host] = true
+				httpsifyLock.Unlock()
+				http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusMovedPermanently)
+				return
+			}
+
+			labels := strings.Split(name, ".")
+			for i := range labels {
+				labels[i] = "*"
+				candidate := strings.Join(labels, ".")
+				if _, ok := tlsConfig.NameToCertificate[candidate]; ok {
+					httpsifyLock.Lock()
+					httpsify[r.Host] = true
+					httpsifyLock.Unlock()
+					http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusMovedPermanently)
+					return
+				}
+			}
+			httpsifyLock.RLock()
+			httpsify[r.Host] = false
+			httpsifyLock.RUnlock()
+		}
+	}
+
 	backend, ok := domains[r.Host]
 	if !ok {
 		w.Write([]byte("No route found"))

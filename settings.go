@@ -3,14 +3,17 @@ package main
 import (
 	"crypto/tls"
 	"strings"
+	"sync"
 
 	"github.com/Sirupsen/logrus"
 )
 
 var (
-	certs    []tls.Certificate
-	domains  map[string]string
-	backends map[string][]string
+	certs        []tls.Certificate
+	domains      map[string]string
+	backends     map[string][]string
+	httpsify     map[string]bool
+	httpsifyLock sync.RWMutex
 )
 
 func loadSettings() {
@@ -106,4 +109,5 @@ func loadSettings() {
 
 	domains = newDomains
 	backends = newBackends
+	httpsify = map[string]bool{}
 }

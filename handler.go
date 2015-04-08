@@ -15,7 +15,7 @@ var (
 
 func handler(w http.ResponseWriter, r *http.Request) {
 	// First ensure HTTPS if we have a proper cert
-	if tlsConfig.NameToCertificate != nil {
+	if r.TLS == nil && tlsConfig.NameToCertificate != nil {
 		httpsifyLock.RLock()
 		st, ok := httpsify[r.Host]
 		httpsifyLock.RUnlock()
